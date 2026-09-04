@@ -16,6 +16,20 @@ class Base(DeclarativeBase):
     pass
 
 
+def normalize_database_url(url: str) -> str:
+    """Ensure database URL specifies an async driver (asyncpg for PostgreSQL, aiosqlite for SQLite)."""
+    if not url:
+        return url
+    cleaned = str(url).strip()
+    if cleaned.startswith("postgres://"):
+        return "postgresql+asyncpg://" + cleaned[len("postgres://"):]
+    if cleaned.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + cleaned[len("postgresql://"):]
+    if cleaned.startswith("sqlite://") and not cleaned.startswith("sqlite+aiosqlite://"):
+        return "sqlite+aiosqlite://" + cleaned[len("sqlite://"):]
+    return cleaned
+
+
 def init_db(
     database_url: str,
     echo: bool = False,
@@ -26,6 +40,8 @@ def init_db(
 ) -> AsyncEngine:
     """Initialize the async engine with production-grade connection pooling."""
     global _engine, _session_factory
+
+    database_url = normalize_database_url(database_url)
 
     engine_kwargs: dict[str, Any] = {
         "echo": echo,

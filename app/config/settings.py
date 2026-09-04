@@ -117,6 +117,21 @@ class Settings(BaseSettings):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Automatically adapt standard postgres/postgresql connection strings to use asyncpg driver."""
+        if not v:
+            return v
+        url = str(v).strip()
+        if url.startswith("postgres://"):
+            url = "postgresql+asyncpg://" + url[len("postgres://"):]
+        elif url.startswith("postgresql://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        elif url.startswith("sqlite://") and not url.startswith("sqlite+aiosqlite://"):
+            url = "sqlite+aiosqlite://" + url[len("sqlite://"):]
+        return url
+
     @field_validator("DEFAULT_EXPORT_TIME")
     @classmethod
     def validate_time_format(cls, v: str) -> str:

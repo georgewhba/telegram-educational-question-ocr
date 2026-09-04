@@ -30,3 +30,38 @@ def test_invalid_time_format():
             TEACHER_CHAT_ID=123,
             DEFAULT_EXPORT_TIME="25:99",
         )
+
+
+def test_database_url_normalization():
+    # Railway/Heroku standard postgresql:// URL
+    s1 = Settings(
+        TELEGRAM_BOT_TOKEN="test_token",
+        TEACHER_CHAT_ID=123,
+        DATABASE_URL="postgresql://postgres:pass@localhost:5432/railway",
+    )
+    assert s1.DATABASE_URL == "postgresql+asyncpg://postgres:pass@localhost:5432/railway"
+
+    # Legacy postgres:// URL
+    s2 = Settings(
+        TELEGRAM_BOT_TOKEN="test_token",
+        TEACHER_CHAT_ID=123,
+        DATABASE_URL="postgres://postgres:pass@localhost:5432/railway",
+    )
+    assert s2.DATABASE_URL == "postgresql+asyncpg://postgres:pass@localhost:5432/railway"
+
+    # Raw sqlite:// URL
+    s3 = Settings(
+        TELEGRAM_BOT_TOKEN="test_token",
+        TEACHER_CHAT_ID=123,
+        DATABASE_URL="sqlite:///test.db",
+    )
+    assert s3.DATABASE_URL == "sqlite+aiosqlite:///test.db"
+
+    # Explicit asyncpg URL remains untouched
+    s4 = Settings(
+        TELEGRAM_BOT_TOKEN="test_token",
+        TEACHER_CHAT_ID=123,
+        DATABASE_URL="postgresql+asyncpg://postgres:pass@localhost:5432/railway",
+    )
+    assert s4.DATABASE_URL == "postgresql+asyncpg://postgres:pass@localhost:5432/railway"
+

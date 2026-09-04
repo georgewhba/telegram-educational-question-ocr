@@ -7,7 +7,8 @@ import sys
 
 from app.bot.bot_instance import create_bot_and_dispatcher
 from app.config.settings import get_settings
-from app.database.base import check_db_health, get_session_factory, init_db
+from app.database import models as _db_models  # noqa: F401
+from app.database.base import check_db_health, create_all_tables, get_session_factory, init_db
 from app.database.repositories import RecipientRepository, ScheduleRepository
 from app.domain.enums import ExportFormat
 from app.services.file_service import FileService
@@ -70,6 +71,10 @@ async def main():
         logger.error("Database health check failed! Unable to connect to PostgreSQL.")
         raise RuntimeError("Database connection failure on startup.")
     logger.info("Database connection established and verified healthy.")
+ 
+    # Automatically verify and create all tables if needed
+    await create_all_tables()
+    logger.info("Database schema initialized and verified.")
 
     session_factory = get_session_factory()
 
