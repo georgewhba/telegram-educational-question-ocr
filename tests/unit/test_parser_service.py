@@ -67,3 +67,23 @@ def test_parse_incomplete_options_returns_none(test_settings):
     text = "سؤال تجريبي؟\nأ) خيار 1\nب) خيار 2\nج) خيار 3\n"
     payload = parser.parse(text, job_id="job-incomplete")
     assert payload is None
+
+
+def test_parse_bullet_and_radio_markers(test_settings):
+    parser = ParserService(test_settings)
+    text = (
+        "Question No: 6 / 10\n"
+        "Here is an infix expression: 4+3*(6*3-12). Suppose that we are using the usual stack algorithm.\n\n"
+        "● 1) 3\n"
+        "○ 2) 4\n"
+        "● 3) 2\n"
+        "● 4) 5 or more\n"
+    )
+    payload = parser.parse(text, job_id="job-bullets")
+    assert payload is not None
+    assert "infix expression" in payload.question
+    assert payload.option_a == "3"
+    assert payload.option_b == "4"
+    assert payload.option_c == "2"
+    assert payload.option_d == "5 or more"
+

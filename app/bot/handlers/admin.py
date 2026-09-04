@@ -324,11 +324,16 @@ async def cb_sub_resend(callback: CallbackQuery, bot: Bot, session_factory: asyn
     delivery_service = TeacherDeliveryService(bot, settings)
     res = await delivery_service.deliver_processed_question(
         job_id=job_id,
-        processed_image_path=Path(sub.processed_file_path),
         student_name=sub.user.display_name if sub.user else "طالب",
         student_telegram_id=sub.user.telegram_user_id if sub.user else 0,
         business_date=str(sub.business_date),
         submitted_at=sub.submitted_at_utc,
+        question_text=sub.question_text,
+        option_a=sub.option_a,
+        option_b=sub.option_b,
+        option_c=sub.option_c,
+        option_d=sub.option_d,
+        processed_image_path=Path(sub.processed_file_path),
     )
 
     new_deliv_status = DeliveryStatus.DELIVERY_SUCCESS if res.is_success else DeliveryStatus.DELIVERY_FAILED

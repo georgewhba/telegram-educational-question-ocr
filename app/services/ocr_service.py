@@ -10,7 +10,7 @@ from PIL import Image
 
 from app.config.settings import Settings, get_settings
 from app.domain.exceptions import OCRError, OCRTimeoutError
-from app.domain.models import OCRResult
+from app.domain.models import OCRResult, QuestionPayload
 
 
 class OCRProvider(Protocol):
@@ -58,6 +58,12 @@ class TesseractOCRProvider:
 
             raw_text = pytesseract.image_to_string(img, lang=language, config=custom_config)
 
+            # Fallback to PSM 6 (single uniform block) if PSM 3 returned minimal text
+            if not raw_text or len(raw_text.strip()) < 15:
+                alt_text = pytesseract.image_to_string(img, lang=language, config=r"--oem 3 --psm 6")
+                if len(alt_text.strip()) > len(raw_text.strip() if raw_text else ""):
+                    raw_text = alt_text
+
         return OCRResult(
             raw_text=raw_text,
             normalized_text="",  # Will be populated by normalizer
@@ -96,7 +102,12 @@ class GeminiVisionOCRProvider:
                 )
 
                 response = None
-                for model_name in ["gemini-2.5-flash", "gemini-3.6-flash"]:
+                for model_name in [
+                    "gemini-3.5-flash",
+                    "gemini-3.5-flash-lite",
+                    "gemini-flash-latest",
+                    "gemini-2.5-flash",
+                ]:
                     try:
                         response = client.models.generate_content(
                             model=model_name,
@@ -172,12 +183,114 @@ class OCRService:
             return TesseractOCRProvider()
 
     async def extract(self, image_path: Path, language: str = "ara+eng") -> OCRResult:
-        """Extract text using configured provider with timeout protection."""
+        """Extract text using configured provider with timeout protection and automatic Gemini fallback."""
         try:
             # 30 second timeout per OCR call
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 self.provider.extract_text(image_path, language=language),
                 timeout=30.0,
             )
+            # If primary provider returned empty or near-empty text, and Gemini key is configured, fallback to Gemini
+            if (not result.raw_text or len(result.raw_text.strip()) < 15) and self.settings.GEMINI_API_KEY and not isinstance(self.provider, GeminiVisionOCRProvider):
+                gemini_prov = GeminiVisionOCRProvider(api_key=self.settings.GEMINI_API_KEY)
+                try:
+                    return await asyncio.wait_for(
+                        gemini_prov.extract_text(image_path, language=language),
+                        timeout=25.0,
+                    )
+                except Exception:
+                    pass
+            return result
         except asyncio.TimeoutError:
+            if self.settings.GEMINI_API_KEY and not isinstance(self.provider, GeminiVisionOCRProvider):
+                gemini_prov = GeminiVisionOCRProvider(api_key=self.settings.GEMINI_API_KEY)
+                try:
+                    return await asyncio.wait_for(
+                        gemini_prov.extract_text(image_path, language=language),
+                        timeout=25.0,
+                    )
+                except Exception:
+                    pass
             raise OCRTimeoutError("انتهت مهلة استخراج النص من الصورة (OCR Timeout).")
+        except Exception:
+            if self.settings.GEMINI_API_KEY and not isinstance(self.provider, GeminiVisionOCRProvider):
+                gemini_prov = GeminiVisionOCRProvider(api_key=self.settings.GEMINI_API_KEY)
+                try:
+                    return await asyncio.wait_for(
+                        gemini_prov.extract_text(image_path, language=language),
+                        timeout=25.0,
+                    )
+                except Exception:
+                    pass
+            raise
+
+    async def extract_multimodal_question(self, image_path: Path, job_id: str) -> QuestionPayload | None:
+        """Direct multimodal vision extraction using Gemini to directly parse question and 4 choices."""
+        if not self.settings.GEMINI_API_KEY:
+            return None
+        try:
+            from google import genai
+            from google.genai import types
+            from pydantic import BaseModel
+
+            class ExtractedQuestion(BaseModel):
+                question: str
+                option_a: str
+                option_b: str
+                option_c: str
+                option_d: str
+
+            client = genai.Client(api_key=self.settings.GEMINI_API_KEY)
+            with open(image_path, "rb") as f:
+                img_bytes = f.read()
+
+            system_instruction = (
+                "You are an expert OCR and educational exam parsing engine. Analyze the provided image of an educational multiple-choice question. "
+                "Extract the main question text and the exactly four choices (options). "
+                "Remove exam headers like 'Question No: X/Y' or selection markers. "
+                "Do NOT answer the question. Strictly output structured JSON matching the schema."
+            )
+
+            models_to_try = [
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-flash-latest",
+                "gemini-2.5-flash",
+            ]
+
+            response = None
+            for model_name in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            genai.types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                            "Extract the question text and 4 choices from this image into structured JSON.",
+                        ],
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            response_mime_type="application/json",
+                            response_schema=ExtractedQuestion,
+                            temperature=0.0,
+                            max_output_tokens=1000,
+                        ),
+                    )
+                    if response and response.text:
+                        break
+                except Exception:
+                    continue
+
+            if response and response.text:
+                import json
+                data = json.loads(response.text)
+                return QuestionPayload(
+                    question=data.get("question", "").strip(),
+                    option_a=data.get("option_a", "").strip(),
+                    option_b=data.get("option_b", "").strip(),
+                    option_c=data.get("option_c", "").strip(),
+                    option_d=data.get("option_d", "").strip(),
+                    job_id=job_id,
+                )
+        except Exception:
+            return None
+        return None

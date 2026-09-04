@@ -151,6 +151,8 @@ class ImageService:
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
         if strategy == "raw_grayscale":
+            if np.mean(gray) < 127:
+                gray = cv2.bitwise_not(gray)
             return gray
 
         elif strategy == "enhanced_contrast":
@@ -160,6 +162,8 @@ class ImageService:
             # Mild unsharp mask
             gaussian = cv2.GaussianBlur(enhanced, (0, 0), 2.0)
             sharpened = cv2.addWeighted(enhanced, 1.5, gaussian, -0.5, 0)
+            if np.mean(sharpened) < 127:
+                sharpened = cv2.bitwise_not(sharpened)
             return sharpened
 
         elif strategy == "adaptive_threshold":
@@ -167,6 +171,9 @@ class ImageService:
             denoised = cv2.bilateralFilter(gray, 9, 75, 75)
             # Adaptive Gaussian thresholding
             thresh = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
+            # Auto-invert if dark background (more black pixels than white)
+            if np.sum(thresh == 0) > np.sum(thresh == 255):
+                thresh = cv2.bitwise_not(thresh)
             return thresh
 
         else:  # "standard"
@@ -177,6 +184,9 @@ class ImageService:
             enhanced = clahe.apply(denoised)
             # Otsu binarization
             _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # Auto-invert if dark background (more black pixels than white)
+            if np.sum(thresh == 0) > np.sum(thresh == 255):
+                thresh = cv2.bitwise_not(thresh)
             return thresh
 
     def _detect_mime(self, data: bytes) -> str | None:

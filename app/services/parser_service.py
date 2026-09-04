@@ -83,11 +83,11 @@ class ParserService:
 
     def _extract_by_markers(self, text: str, markers: list[str], job_id: str) -> QuestionPayload | None:
         m0, m1, m2, m3 = markers
+        marker_pattern = rf"(?:{re.escape(m0)}|{re.escape(m1)}|{re.escape(m2)}|{re.escape(m3)})"
 
-        # Build regex that requires an explicit marker delimiter:
-        # e.g. (A) or [A] or A) or A. or A- or A:
+        # Build regex that allows optional bullet symbols (●, ○, •, *, etc.) before the marker:
         marker_re = re.compile(
-            rf"(?:^|\n)\s*(?:[\(\[\{{\<]\s*({re.escape(m0)}|{re.escape(m1)}|{re.escape(m2)}|{re.escape(m3)})\s*[\)\]\}}\>]|({re.escape(m0)}|{re.escape(m1)}|{re.escape(m2)}|{re.escape(m3)})\s*[\)\]\}}\>\.\:\-\–])\s*(.+)",
+            rf"(?:^|\n)\s*(?:[●○•*■□◆◇►▪▫\-\–—\.\s]*?)(?:[\(\[\{{\<]\s*({marker_pattern})\s*[\)\]\}}\>]|({marker_pattern})\s*[\)\]\}}\>\.\:\-\–])\s*(.+)",
             re.IGNORECASE,
         )
 
@@ -112,11 +112,14 @@ class ParserService:
                 content = text[match.end() :]
 
             clean_content = re.sub(r"\s+", " ", content).strip()
+            # Clean any trailing bullets or markers
+            clean_content = re.sub(r"[●○•*■□◆◇►▪▫\s]+$", "", clean_content).strip()
             found_options[marker_char] = clean_content
 
         # Question text is everything prior to the first marker
         question_text = text[:first_marker_pos].strip()
         question_text = re.sub(r"\s+", " ", question_text)
+        question_text = re.sub(r"[●○•*■□◆◇►▪▫\s]+$", "", question_text).strip()
 
         # Check that we have all 4 distinct markers
         norm_markers = [m.upper() for m in markers]
@@ -137,8 +140,9 @@ class ParserService:
         # 1. Handle inline options on single lines (e.g. "أ) الرياض   ب) جدة")
         for markers in [["أ", "ب", "ج", "د"], ["A", "B", "C", "D"], ["1", "2", "3", "4"]]:
             m0, m1, m2, m3 = markers
+            marker_pattern = rf"(?:{re.escape(m0)}|{re.escape(m1)}|{re.escape(m2)}|{re.escape(m3)})"
             pattern = re.compile(
-                rf"(?:^|\s+)(?:[\(\[\{{\<]\s*({re.escape(m0)}|{re.escape(m1)}|{re.escape(m2)}|{re.escape(m3)})\s*[\)\]\}}\>]|({re.escape(m0)}|{re.escape(m1)}|{re.escape(m2)}|{re.escape(m3)})\s*[\)\]\}}\>\.\:\-\–])\s*",
+                rf"(?:^|\s+)(?:[●○•*■□◆◇►▪▫\-\–—\.\s]*?)(?:[\(\[\{{\<]\s*({marker_pattern})\s*[\)\]\}}\>]|({marker_pattern})\s*[\)\]\}}\>\.\:\-\–])\s*",
                 re.IGNORECASE,
             )
 
@@ -150,6 +154,7 @@ class ParserService:
                 if all(exp in found_order for exp in expected_order):
                     # Extract question
                     q_text = text[: splits[0].start()].strip()
+                    q_text = re.sub(r"[●○•*■□◆◇►▪▫\s]+$", "", q_text).strip()
                     options: dict[str, str] = {}
 
                     for i, sp in enumerate(splits):
@@ -157,6 +162,7 @@ class ParserService:
                         start_pos = sp.end()
                         end_pos = splits[i + 1].start() if i + 1 < len(splits) else len(text)
                         opt_text = text[start_pos:end_pos].strip()
+                        opt_text = re.sub(r"[●○•*■□◆◇►▪▫\s]+$", "", opt_text).strip()
                         options[marker_val] = opt_text
 
                     if all(exp in options and len(options[exp]) > 0 for exp in expected_order):
@@ -211,7 +217,7 @@ class ParserService:
             )
 
             response = None
-            for model_name in ["gemini-2.5-flash", "gemini-3.6-flash"]:
+            for model_name in ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]:
                 try:
                     response = client.models.generate_content(
                         model=model_name,
@@ -250,11 +256,13 @@ class ParserService:
         return re.sub(r"^(?:[\(\[\{]?\s*[أ-يa-zA-Z0-9]\s*[\)\]\}\.\:\-\–]?\s*)", "", text).strip()
 
     def _is_valid_payload(self, p: QuestionPayload) -> bool:
-        """Check if parsed payload meets non-empty criteria."""
+        """Check if parsed payload meets non-empty and non-placeholder criteria."""
+        opts = [p.option_a.strip(), p.option_b.strip(), p.option_c.strip(), p.option_d.strip()]
+        if len(set(opts)) < 4:
+            return False
+        if any(o.upper() in ["N/A", "NONE", "NULL", "-", "UNKNOWN"] for o in opts):
+            return False
         return (
             len(p.question.strip()) >= 2
-            and len(p.option_a.strip()) >= 1
-            and len(p.option_b.strip()) >= 1
-            and len(p.option_c.strip()) >= 1
-            and len(p.option_d.strip()) >= 1
+            and all(len(o) >= 1 for o in opts)
         )

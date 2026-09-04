@@ -154,9 +154,9 @@ async def handle_question_photo(
             )
             await session.commit()
 
-        # 6. Preprocessing & OCR Loop (Attempt 1: Standard, Attempt 2: Enhanced Contrast if needed)
+        # 6. Preprocessing & OCR Loop (Attempt 1: Standard, Attempt 2: Enhanced Contrast, Attempt 3: Grayscale)
         payload = None
-        for attempt_idx, strategy in enumerate(["standard", "enhanced_contrast"], start=1):
+        for attempt_idx, strategy in enumerate(["standard", "enhanced_contrast", "raw_grayscale"], start=1):
             preproc_path = tmp_dir / f"preproc_{attempt_idx}.png"
             image_service.preprocess_image(orig_path, preproc_path, strategy=strategy)
 
@@ -187,6 +187,18 @@ async def handle_question_photo(
                 payload = eval_res.cleaned_payload
                 break
 
+        # If standard local OCR did not extract 4 valid options, try direct Gemini Vision multimodal extraction
+        if payload is None and settings.GEMINI_API_KEY:
+            gemini_payload = await ocr_service.extract_multimodal_question(orig_path, job_id=job_id)
+            if gemini_payload:
+                eval_res = validation_service.evaluate(
+                    gemini_payload,
+                    ocr_confidence=0.95,
+                    is_retry=True,
+                )
+                if eval_res.result == QualityGateResult.PASS and eval_res.cleaned_payload:
+                    payload = eval_res.cleaned_payload
+
         # 7. Check if quality gate failed all attempts
         if payload is None:
             async with session_factory() as session:
@@ -199,7 +211,7 @@ async def handle_question_photo(
             )
             return
 
-        # 8. Render standardized deterministic template
+        # 8. Render standardized deterministic template (preserved for archives/exports)
         processed_path = file_service.get_processed_path(job_id)
         rendering_service.render_question(payload, processed_path)
 
@@ -218,17 +230,22 @@ async def handle_question_photo(
             )
             await session.commit()
 
-        # 9. Deliver to teacher
+        # 9. Deliver text of question to teacher (NO new photo sent)
         delivery_res = await delivery_service.deliver_processed_question(
             job_id=job_id,
-            processed_image_path=processed_path,
             student_name=user.full_name or "طالب",
             student_telegram_id=user.id,
             business_date=str(business_date),
             submitted_at=now_utc,
+            question_text=payload.question,
+            option_a=payload.option_a,
+            option_b=payload.option_b,
+            option_c=payload.option_c,
+            option_d=payload.option_d,
+            processed_image_path=processed_path,
         )
 
-        # 10. Update delivery result in DB and notify student accordingly
+        # 10. Update delivery result in DB and notify student with the extracted TEXT
         async with session_factory() as session:
             sub_repo = SubmissionRepository(session)
             deliv_status = (
@@ -237,10 +254,20 @@ async def handle_question_photo(
             await sub_repo.update_status(job_id, delivery_status=deliv_status)
             await session.commit()
 
-        if delivery_res.is_success:
-            await status_msg.edit_text("✅ تم تجهيز السؤال وإرساله للمعلم بنجاح.")
-        else:
-            await status_msg.edit_text("⚠️ تم تجهيز السؤال، لكن تعذر إرساله للمعلم حاليًا.")
+        student_reply = (
+            "✅ <b>تم استخراج نص السؤال بنجاح:</b>\n\n"
+            f"❓ <b>السؤال:</b>\n{payload.question}\n\n"
+            "<b>الخيارات:</b>\n"
+            f"1️⃣ {payload.option_a}\n"
+            f"2️⃣ {payload.option_b}\n"
+            f"3️⃣ {payload.option_c}\n"
+            f"4️⃣ {payload.option_d}\n\n"
+            "📨 <b>تم إرسال السؤال إلى المعلم بنجاح.</b>"
+        )
+        if not delivery_res.is_success:
+            student_reply += "\n⚠️ (ملاحظة: تعذر إرسال الإشعار للمعلم حاليًا وسيقوم النظام بإعادة المحاولة تلقائيًا)."
+
+        await status_msg.edit_text(student_reply, parse_mode="HTML")
 
     except Exception:
         # Non-exposing failure handling
