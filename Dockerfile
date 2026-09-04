@@ -29,7 +29,6 @@ RUN pip install --upgrade pip && \
 # Copy application source code, migrations, and assets
 COPY app/ ./app/
 COPY assets/ ./assets/
-COPY templates/ ./templates/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY scripts/ ./scripts/

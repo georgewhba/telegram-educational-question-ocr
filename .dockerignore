@@ -1,0 +1,47 @@
+# Git and system
+.git
+.gitignore
+.dockerignore
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+
+# Tests and documentation
+tests/
+docs/
+
+# Local databases and runtime file storage
+*.db
+*.sqlite3
+storage/*.db
+storage/*.db*
+storage/*.sqlite
+storage/originals/*
+!storage/originals/.gitkeep
+storage/processed/*
+!storage/processed/.gitkeep
+storage/exports/*
+!storage/exports/.gitkeep
+storage/tmp/*
+!storage/tmp/.gitkeep
