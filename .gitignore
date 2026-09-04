@@ -1,0 +1,81 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment variables & secrets (CRITICAL: NEVER COMMIT SECRETS)
+.env
+.env.*
+!.env.example
+
+# Database files & local persistence
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+storage/*.db
+storage/*.db*
+storage/*.sqlite
+
+# Physical file storage (Keep directory structure via .gitkeep)
+storage/originals/*
+!storage/originals/.gitkeep
+storage/processed/*
+!storage/processed/.gitkeep
+storage/exports/*
+!storage/exports/.gitkeep
+storage/tmp/*
+!storage/tmp/.gitkeep
+
+# Unit test / coverage / linter caches
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IDE & Editor configs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

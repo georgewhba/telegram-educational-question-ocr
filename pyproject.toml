@@ -1,0 +1,43 @@
+[project]
+name = "bot_telegram_ocr"
+version = "1.0.0"
+description = "Production-grade Telegram educational question OCR and processing system"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.17.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.20.0",
+    "alembic>=1.14.0",
+    "pillow>=11.0.0",
+    "arabic-reshaper>=3.0.0",
+    "python-bidi>=0.6.0",
+    "python-docx>=1.1.2",
+    "openpyxl>=3.1.5",
+    "opencv-python-headless>=4.10.0",
+    "pytesseract>=0.3.13",
+    "google-genai>=2.0.0",
+    "httpx>=0.28.0",
+    "apscheduler>=3.10.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
